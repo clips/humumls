@@ -32,20 +32,17 @@ t = TableCreator(languages, "path/to/meta")
 t.process(verbose=True)
 ```
 
-Then, this `MongoDB` can be addressed using `pymongo`, or the provided `aggregate` class. The aggregate class is meant to be expanded for your specific purposes. It contains examples of use.
+This `MongoDB` can be addressed using `pymongo`, or the provided `aggregate` class. The aggregate class is meant to be expanded for your specific purposes. Currently, it contains examples of use.
 
 ```python
 
 from aggregator import Aggregator
 
-# Single connection for effectiveness.
-connection = Connection(dbname="umls", hostname="localhost", port="27107")
-
-# Or, you can define your own aggregate queries in another class.
+# You can define your own aggregate queries.
 agg = Aggregator()
 
 # Query using connections.
-concept = agg.concept["C000280"]
+concept = agg.concept["C0032344"]
 string = agg.string["S000124"]
 
 # Perform aggregate queries.
