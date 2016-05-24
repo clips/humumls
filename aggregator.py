@@ -1,4 +1,4 @@
-from table import String, Term, Concept, Word
+from table import String, Term, Concept
 from connection import Connection
 from collections import defaultdict
 from itertools import chain
@@ -21,7 +21,6 @@ class Aggregator(object):
         self.string = String(self._connection)
         self.term = Term(self._connection)
         self.concept = Concept(self._connection)
-        self.word = Word(self._connection)
 
     def concepts_string(self, string):
         """
