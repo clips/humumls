@@ -46,5 +46,5 @@ concept = agg.concept["C0032344"]
 string = agg.string["S000124"]
 
 # Perform aggregate queries.
-cancers = agg.concept_string["cancer"]
+cancers = agg.concepts_string("cancer")
 ```
