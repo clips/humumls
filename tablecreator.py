@@ -7,7 +7,7 @@ import re
 
 from pymongo import MongoClient
 from collections import defaultdict
-
+from pymongo import ASCENDING, DESCENDING
 
 class TableCreator:
     """A class for creating the MongoDB form the Rich Release Format (RRF) files that come with the UMLS DB."""
@@ -116,7 +116,7 @@ class TableCreator:
         self._create_concepts(overwrite, process_relations, process_definitions)
 
         # Create extra index.
-        self.db.string.create_index('string', unique=True)
+        self.db.string.create_index([("string",ASCENDING) ,("lang",ASCENDING)], unique=True)
 
         logging.info("done")
 
