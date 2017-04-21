@@ -1,7 +1,8 @@
-from table import String, Term, Concept
-from connection import Connection
 from collections import defaultdict
 from itertools import chain
+
+from humumls.connection import Connection
+from humumls.table import String, Term, Concept
 
 
 class Aggregator(object):
@@ -48,16 +49,17 @@ class Aggregator(object):
 
         return self.concept.bunch_definitions(string_obj["concept"])
 
-    def definitions_terms(self, string):
+    def definitions_terms(self, string, include_synonyms):
         """
         Get all definitions + preferred terms for a given string. Useful for creating concept representations.
 
         :param string: the string for which to retrieve the concepts and preferred terms.
+        :param include_synonyms: whether to include synonyms.
         :return: a dictionary of concepts with the strings that refer to that concept.
         """
         cids = self.string.concept_id(string)
 
-        return self.definitions_terms_cid(cids)
+        return self.definitions_terms_cid(cids, include_synonyms)
 
     def definitions_terms_cid(self, cids, include_synonyms, include_term=True):
         """

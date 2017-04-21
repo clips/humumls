@@ -6,7 +6,7 @@ class Table(object):
         """
 
         :param connection: a connection instance.
-        :param classname: the name of the class for which the crown functions.
+        :param classname: the name of the class for which the table functions.
         :return:
         """
         self.classname = classname
