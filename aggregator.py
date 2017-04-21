@@ -59,7 +59,7 @@ class Aggregator(object):
 
         return self.definitions_terms_cid(cids)
 
-    def definitions_terms_cid(self, cids, include_synonyms, include_term=True):
+    def definitions_terms_cid(self, cids, include_synonyms=(), include_term=True):
         """
         Get all definitions from a cid.
 
