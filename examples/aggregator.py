@@ -11,7 +11,6 @@ class Aggregator(object):
     def __init__(self, dbname="umls", hostname="localhost", port=27017):
         """
         Initialize an aggregator of different tables.
-
         :param dbname: the name of the DB, default is UMLS
         :param hostname: the name of the host, default is localhost
         :param port: the port on which your mongodb runs, default is 27107
@@ -26,7 +25,6 @@ class Aggregator(object):
     def concepts_string(self, string):
         """
         Get all concept objects given a string.
-
         :param string: the string for which to search concepts
         :return: a list of concepts.
         """
@@ -39,7 +37,6 @@ class Aggregator(object):
     def definitions(self, string):
         """
         Get all definitions given a string.
-
         :param string: the string for which to search definitions.
         :return: a dictionary of concepts which contains the definition of that concept.
         """
@@ -52,7 +49,6 @@ class Aggregator(object):
     def definitions_terms(self, string, include_synonyms):
         """
         Get all definitions + preferred terms for a given string. Useful for creating concept representations.
-
         :param string: the string for which to retrieve the concepts and preferred terms.
         :param include_synonyms: whether to include synonyms.
         :return: a dictionary of concepts with the strings that refer to that concept.
@@ -61,10 +57,9 @@ class Aggregator(object):
 
         return self.definitions_terms_cid(cids, include_synonyms)
 
-    def definitions_terms_cid(self, cids, include_synonyms, include_term=True):
+    def definitions_terms_cid(self, cids, include_synonyms=(), include_term=True):
         """
         Get all definitions from a cid.
-
         :param cids: a list of cids
         :param include_synonyms: The types of synonyms to include.
         :param include_term: whether to use the preferred term.
@@ -95,5 +90,4 @@ class Aggregator(object):
 
             output[c["_id"]] = list(output[c["_id"]])
 
-        return output
-
+return output
