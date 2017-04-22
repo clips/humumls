@@ -153,9 +153,11 @@ class Concept(Table):
         :param cid: the cid.
         :return: A list of concept that are synonyms to the given cid.
         """
-
-        return self[cid]["rel"]["synonym"]
-
+        try:
+            return self[cid]["rel"]["synonym"]
+        except KeyError:
+            return None
+        
     def get_words(self, cid):
         """
         Gets all words which are associated with a concept ID.
