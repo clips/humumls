@@ -156,7 +156,7 @@ class Concept(Table):
         try:
             return self[cid]["rel"]["synonym"]
         except KeyError:
-            return None
+            return []
         
     def get_words(self, cid):
         """
