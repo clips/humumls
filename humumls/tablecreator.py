@@ -139,7 +139,7 @@ def _create_concepts(path,
                      languages,
                      preprocessor):
     """
-    Read MRCONSO for concepts, strings, and terms.
+    Read MRCONSO for concepts.
 
     Parameters
     ----------
@@ -149,8 +149,18 @@ def _create_concepts(path,
         Whether to process MRDEF, and add definitions to the database.
     process_relations : bool
         Whether to process MRREL, and add relations to the database.
+    process_semantic_types : bool
+        Whether to process MRSTY, and add semantic types to the database.
     languages : list of str
         The languages to use.
+    preprocessor : function
+        A function which preprocesses the data.
+
+    Returns
+    -------
+    concepts : dict
+        Dictionary of concept data, to be added to the database.
+
     """
     concepts = defaultdict(mytype)
 
@@ -190,8 +200,9 @@ def _create_concepts(path,
 
     return dict(concepts)
 
-def _create_terms(path, languages):
 
+def _create_terms(path, languages):
+    """Read MRCONSO for terms."""
     terms = defaultdict(mytype)
 
     mrcsonsopath = os.path.join(path, "MRCONSO.RRF")
@@ -221,7 +232,7 @@ def _create_terms(path, languages):
 
 
 def _create_strings(path, languages):
-
+    """Read MRCONSO for strings."""
     strings = defaultdict(mytype)
 
     mrcsonsopath = os.path.join(path, "MRCONSO.RRF")
@@ -267,12 +278,10 @@ def _create_strings(path, languages):
 
 def process_mrrel(path, concepts):
     """
-    Reads the relations from MRREL.RRF, and appends them to the corresponding items in the store.
-    Because bidirectional relations in UMLS occur for both directions, only the direction which occurs in the
-    UMLS is added.
+    Read the relations from MRREL.RRF, and add them to concepts.
 
-    :param store: The store to which to add.
-    :return: the updated store.
+    Because bidirectional relations in UMLS occur for both directions,
+    only the direction which occurs in the UMLS is added.
     """
     mrrelpath = os.path.join(path, "MRREL.RRF")
 
@@ -281,6 +290,7 @@ def process_mrrel(path, concepts):
 
     num_lines = idx
 
+    print("Reading MRREL.RRF for relations.")
     for record in tqdm(open(mrrelpath), total=num_lines):
 
         split = record.strip().split("|")
@@ -305,12 +315,28 @@ def process_mrdef(path,
                   languages,
                   preprocessor):
     """
-    Reads the definitions from MRDEF.RRF and appends them to the corresponding items in the store.
+    Read definitions from MRDEF.RRF.
 
-    It is appended to the store, and not to the DB because this is way faster.
+    We append this to the intermediate dictionary (concepts), not the DB
+    because this is way faster.
 
-    :param store: The store to which to append.
-    :return: the updated store.
+    Parameters
+    ----------
+    path : string
+        The path to the META dir.
+    concepts : dict
+        The dictionary of concepts to which to add the definitions.
+    languages : list of str
+        The languages to use.
+    preprocessor : function
+        Function that preprocesses the defintions. Should be a function which
+        takes a string as input and returns a string.
+
+    Returns
+    -------
+    concepts : dict
+        The updated concept dictionary with added definitions.
+
     """
     isolanguages = {LANGDICT[l] for l in languages}
 
@@ -321,6 +347,7 @@ def process_mrdef(path,
 
     num_lines = idx
 
+    print("Reading MRDEF.RRF for definitions.")
     for record in tqdm(open(mrdefpath), total=num_lines):
         split = record.strip().split("|")
 
@@ -348,8 +375,9 @@ def process_mrdef(path,
 
     return concepts
 
-def process_mrsty(path, concepts):
 
+def process_mrsty(path, concepts):
+    """Read semantic types from MRSTY.RRF."""
     mrstypath = os.path.join(path, "MRSTY.RRF")
 
     for idx, _ in enumerate(open(mrstypath)):
@@ -357,6 +385,7 @@ def process_mrsty(path, concepts):
 
     num_lines = idx
 
+    print("Reading MRSTY.RRF for semantic types.")
     for record in tqdm(open(mrstypath), total=num_lines):
         split = record.strip().split("|")
 

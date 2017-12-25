@@ -6,16 +6,10 @@ from humumls.table import String, Term, Concept
 
 
 class Aggregator(object):
-    """Example class of Aggregate queries using different UMLS tables"""
+    """Example class of Aggregate queries using different UMLS tables."""
 
     def __init__(self, dbname="umls", hostname="localhost", port=27017):
-        """
-        Initialize an aggregator of different tables.
-        :param dbname: the name of the DB, default is UMLS
-        :param hostname: the name of the host, default is localhost
-        :param port: the port on which your mongodb runs, default is 27107
-        :return: None
-        """
+        """Init method."""
         self._connection = Connection(dbname, hostname, port)
 
         self.string = String(self._connection)
@@ -24,9 +18,20 @@ class Aggregator(object):
 
     def concepts_string(self, string):
         """
-        Get all concept objects given a string.
-        :param string: the string for which to search concepts
-        :return: a list of concepts.
+        Get all concept that correspond to a string.
+
+        Returns an empty list of strings which are not in the database.
+
+        Parameters
+        ----------
+        string : str
+            The string for which to search concepts
+
+        Returns
+        -------
+        concepts : list
+            A list of concepts, represented as dictionaries.
+
         """
         concepts = self.string.concept_id(string)
         if not concepts:
@@ -37,38 +42,64 @@ class Aggregator(object):
     def definitions(self, string):
         """
         Get all definitions given a string.
-        :param string: the string for which to search definitions.
-        :return: a dictionary of concepts which contains the definition of that concept.
+
+        First retrieves all concepts which are attached to a given string,
+        and then retrieves all definitions attached to these concepts.
+
+        Parameters
+        ----------
+        string : str
+             The string for which to search definitions.
+
+        Returns
+        -------
+        definitions : list
+            A list of dictionaries containing the definitions.
+
         """
-        string_obj = self.string.retrieve_one({"string": string}, {"_id": 1, "cui": 1})
+        string_obj = self.string.retrieve_one({"string": string},
+                                              {"_id": 0, "cui": 1})
         if not string_obj:
             return []
 
+        # Get the definitions.
         return self.concept.bunch_definitions(string_obj["cui"])
 
-    def definitions_terms(self, string, include_synonyms=()):
+    def definitions_terms(self, string, relations=()):
         """
-        Get all definitions + preferred terms for a given string. Useful for creating concept representations.
-        :param string: the string for which to retrieve the concepts and preferred terms.
-        :param include_synonyms: whether to include synonyms.
-        :return: a dictionary of concepts with the strings that refer to that concept.
+        Get all definitions + preferred terms for a given string.
+
+        Parameters
+        ----------
+        string : str
+            The string for which to retrieve the concepts and preferred terms.
+        include_synonyms : list, optional, default ()
+            The types of relations to include. For list of relations, check
+            the README.
+
+        Returns
+        -------
+        concepts : list
+            A dictionary of concepts with the strings that refer to that
+            concept.
+
         """
         cids = self.string.concept_id(string)
+        if not cids:
+            return []
+        return self.definitions_terms_cid(cids, relations)
 
-        return self.definitions_terms_cid(cids, include_synonyms)
-
-    def definitions_terms_cid(self, cids, include_synonyms=(), include_term=True):
-        """
-        Get all definitions from a cid.
-        :param cids: a list of cids
-        :param include_synonyms: The types of synonyms to include.
-        :param include_term: whether to use the preferred term.
-        :return: A list of definitions, grouped by concept.
-        """
-        concepts = self.concept.bunch(cids, filt={"_id": 1, "definition": 1, "preferred": 1, "rel": 1})
+    def definitions_terms_cui(self,
+                              cuis,
+                              include_synonyms=(),
+                              include_term=True):
+        """Get the definitions and terms for concepts given their CUIs."""
+        filt = {"_id": 1, "definition": 1, "preferred": 1, "rel": 1}
+        concepts = self.concept.bunch(cuis, filt=filt)
 
         output = defaultdict(set)
 
+        # Can be faster.
         for c in concepts:
             try:
                 output[c["_id"]].update(c["definition"])
@@ -79,7 +110,9 @@ class Aggregator(object):
 
                 for syn in include_synonyms:
                     try:
-                        synonyms = self.definitions_terms_cid(c["rel"][syn], include_term=include_term, include_synonyms=()).values()
+                        synonyms = self.definitions_terms_cui(c["rel"][syn],
+                                                              (),
+                                                              include_term)
                         output[c["_id"]].update(chain.from_iterable(synonyms))
                     except KeyError:
                         pass
