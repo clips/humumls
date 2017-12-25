@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 
 def defaultdict_list():
-    """Type for the store dict."""
+    """Type for the dicts."""
     return defaultdict(list)
 
 
