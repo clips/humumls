@@ -1,415 +1,368 @@
+"""Create a mongoDB from the UMLS Rich Release Format files."""
 import os
-import time
-import logging
 import langid
-import io
+from io import open
 import re
 
 from pymongo import MongoClient
 from collections import defaultdict
-from pymongo import ASCENDING, DESCENDING
-
-class TableCreator:
-    """A class for creating the MongoDB form the Rich Release Format (RRF) files that come with the UMLS DB."""
-
-    def __init__(self, languages, pathtometadir, dbname="umls", host="localhost", port=27017, tokenizer=lambda x: x):
-        """
-        Creates a TableCreator instance which will operate on the Rich Release Format (RRF) files which come with
-        the UMLS database.
-
-        The class is designed to directly operate on the RRF files, and doesn't require any formatting.
-        It will create a mongoDB Database with the pre-specified name, host and port.
-
-        The goal of this conversion step is NOT to conform closely to UMLS standards, but to provide a document-level
-        alternative to the databases provided by other packages.
-
-        :param languages: The languages to take into account. These must be given in the UMLS format, e.g. ENG for
-        English, DUT for Dutch. See the _transformlangs_to_iso function for the languages present in UMLS.
-        :param pathtometadir: The path to the /META directory which contains the RRF files. The only files that need
-        to be present for this to work are the MRCONSO, MRDEF and MRREL files.
-        :param dbname: The name of your DB. Defaults to UMLS.
-        :param host: The hostname. defaults to localhost.
-        :param port: The port on which your MongoDB runs. Default is 27107.
-        :param tokenizer: The tokenize function to use for the definitions. If you don't want tokenization, we will
-        tokenize using the identity function, e.g. tokenizer = lambda x: x.
-        :return: None
-        """
-        self.client = MongoClient(host=host, port=port)
-        self.db = self.client.get_database(dbname)
-        self.path = pathtometadir
-        self.punct = re.compile("\W")
-
-        # Standard UMLS relation names are opaque.
-        self.relationmapping = {"PAR": 'parent',
-                                "CHD": 'child',
-                                "RB": 'broader',
-                                "RN": 'narrower',
-                                "SY": 'synonym',
-                                "RO": 'other',
-                                "RL": 'similar',
-                                "RQ": 'related',
-                                "SIB": 'sibling',
-                                "AQ": 'qualifier',
-                                "QB": 'qualifies',
-                                "RU": 'unspecified',
-                                "XR": 'notrelated'}
-
-        # Remove any duplicates
-        self.languages = set(languages)
-
-        # Transform non-standard language codings to ISO.
-        self._isolanguages = self._transformlangs_to_iso(self.languages)
-        self._tokenizer = tokenizer
-
-        self.forbidden = set()
-
-    @staticmethod
-    def _transformlangs_to_iso(languages):
-        """
-        Transforms a list of languages, as defined in UMLS, to their ISO-compliant language names.
-        Used in language identification.
-
-        :param languages: A list of languages.
-        :return: A list of ISO-compliant languages.
-        """
-        langdict = {'ENG': 'en',
-                    'BAQ': 'eu',
-                    'CHI': 'zh',
-                    'CZE': 'cz',
-                    'DAN': 'dk',
-                    'DUT': 'nl',
-                    'EST': 'et',
-                    'FIN': 'fi',
-                    'FRE': 'fr',
-                    'GER': 'de',
-                    'GRE': 'gr',
-                    'HEB': 'he',
-                    'HUN': 'hu',
-                    'ITA': 'it',
-                    'JPN': 'jp',
-                    'KOR': 'ko',
-                    'LAV': 'lv',
-                    'NOR': 'no',
-                    'POL': 'pl',
-                    'POR': 'po',
-                    'RUS': 'ru',
-                    'SPA': 'sp',
-                    'SWE': 'sw',
-                    'TUR': 'tr'}
-
-        return {langdict[l] for l in languages}
-
-    def process(self, verbose=True, process_relations=True, process_definitions=True, overwrite=False):
-        """
-        Processes the UMLS files found at the pre-specified location.
-
-        :param verbose: if true, prints status information to stdout.
-        :param process_relations: whether to process relation files
-        :param process_definitions: whether to process the definition files.
-        :param overwrite: whether to overwrite.
-        """
-        if verbose:
-            logging.basicConfig(level=logging.INFO)
+from pymongo import ASCENDING
+from tqdm import tqdm
+
+
+def mytype():
+    """Type for the store dict."""
+    return defaultdict(list)
+
+
+PUNCT = re.compile("\W")
+
+LANGDICT = {'ENG': 'en',
+            'BAQ': 'eu',
+            'CHI': 'zh',
+            'CZE': 'cz',
+            'DAN': 'dk',
+            'DUT': 'nl',
+            'EST': 'et',
+            'FIN': 'fi',
+            'FRE': 'fr',
+            'GER': 'de',
+            'GRE': 'gr',
+            'HEB': 'he',
+            'HUN': 'hu',
+            'ITA': 'it',
+            'JPN': 'jp',
+            'KOR': 'ko',
+            'LAV': 'lv',
+            'NOR': 'no',
+            'POL': 'pl',
+            'POR': 'po',
+            'RUS': 'ru',
+            'SPA': 'sp',
+            'SWE': 'sw',
+            'TUR': 'tr'}
+
+RELATIONMAPPING = {"PAR": 'parent',
+                   "CHD": 'child',
+                   "RB": 'broader',
+                   "RN": 'narrower',
+                   "SY": 'synonym',
+                   "RO": 'other',
+                   "RL": 'similar',
+                   "RQ": 'related',
+                   "SIB": 'sibling',
+                   "AQ": 'qualifier',
+                   "QB": 'qualifies',
+                   "RU": 'unspecified',
+                   "XR": 'notrelated'}
+
+
+def createdb(pathtometadir,
+             languages=(),
+             dbname="umls",
+             host="localhost",
+             port=27017,
+             process_definitions=True,
+             process_relations=True,
+             process_semantic_types=True,
+             preprocessor=lambda x: x):
+    """
+    Create a MongoDB instance from the RRF format in which UMLS is distributed.
+
+    The class is designed to directly operate on the RRF files,
+    and doesn't require any formatting.
+    It will create a mongoDB Database with the pre-specified name,
+    host and port.
+
+    Parameters
+    ----------
+    languages : list of string
+        The languages to extract from the UMLS database. These must be
+        passed in UMLS format, not in an ISO-compliant standard.
+        See LANGDICT for language key value mappings.
+    pathtometadir : string
+        The path to the META directory which contains the RRF files. The
+        only files that Humumls needs are the MRCONSO, MRDEF and MRREL
+        files.
+    dbname : string, optional, default "umls"
+        The name of the mongodb database you are about to create.
+    host : string, optional, default "localhost"
+        The name of your host.
+    port : int
+        The port on which your mongodb instance resides.
+    preprocessor : function, optional, default identity
+        The preprocessor you would like to use. This should be a function
+        which takes a string and returns a string. An example of this is
+        a tokenizer or a HTML stripper.
+
+    """
+    client = MongoClient(host=host, port=port)
+    db = client.get_database(dbname)
+
+    # Remove any duplicates
+    languages = set(languages)
+
+    # Transform non-standard language codings to ISO.
+    try:
+        {LANGDICT[l] for l in languages}
+    except KeyError:
+        raise KeyError("Not all languages you passed are valid.")
+    # First create necessary paths, to fail early.
+    terms = _create_terms(pathtometadir, languages)
+    '''db.term.insert_many(terms.values())
+    del(terms)'''
+    strings = _create_strings(pathtometadir, languages)
+    '''db.string.insert_many(strings.values())
+    del(strings)'''
 
-        self._create_terms(overwrite)
-        self._create_strings(overwrite)
-        self._create_concepts(overwrite, process_relations, process_definitions)
+    concepts = _create_concepts(pathtometadir,
+                                process_definitions,
+                                process_relations,
+                                process_semantic_types,
+                                languages,
+                                preprocessor)
+    '''db.concept.insert_many(concepts.values())
+    del(concepts)'''
 
-        # Create extra index.
-        self.db.string.create_index([("string",ASCENDING) ,("lang",ASCENDING)], unique=True)
+    # Create extra index.
+    db.string.create_index([("string", ASCENDING),
+                            ("lower", ASCENDING),
+                            ("lang", ASCENDING)], unique=True)
 
-        logging.info("done")
+    return concepts, strings, terms
 
-    def _create_concepts(self, overwrite, relations, definitions):
-        """
-        Reads MRCONSO for concepts. Stores everything in an intermediate dictionary, which requires
-        several gigabytes of memory.
 
-        :param overwrite: whether to overwrite.
-        :param relations: whether to read relations.
-        :param definitions: whether to read definitions.
-        :return: None
-        """
-        collection = self.db.concept
+def _create_concepts(path,
+                     process_definitions,
+                     process_relations,
+                     process_semantic_types,
+                     languages,
+                     preprocessor):
+    """
+    Read MRCONSO for concepts, strings, and terms.
 
-        if collection.count() > 0 and not overwrite:
-            logging.info("Skipped {0}".format(collection.name))
-            return
+    Parameters
+    ----------
+    path : string
+        The path to the folder containing the MRCONSO file.
+    process_definitions : bool
+        Whether to process MRDEF, and add definitions to the database.
+    process_relations : bool
+        Whether to process MRREL, and add relations to the database.
+    languages : list of str
+        The languages to use.
+    """
+    concepts = defaultdict(mytype)
 
-        store = defaultdict(dict)
+    mrcsonsopath = os.path.join(path, "MRCONSO.RRF")
 
-        start = time.time()
+    for idx, _ in enumerate(open(mrcsonsopath)):
+        pass
 
-        for idx, record in enumerate(open(os.path.join(self.path, "MRCONSO.RRF"))):
+    num_lines = idx
 
-            if idx % 100000 == 0:
-                logging.info("{0} concepts in {1:.2f} seconds".format(idx, time.time() - start))
+    print("Reading MRCONSO for concepts.")
+    for record in tqdm(open(mrcsonsopath), total=num_lines):
 
-            split = record.strip().split("|")
+        split = record.strip().split("|")
 
-            if split[1] not in self.languages:
-                continue
+        if languages and split[1] not in languages:
+            continue
 
-            if split[5] in self.forbidden:
-                continue
+        cui = split[0]
+        sui = split[5]
+        lui = split[3]
 
-            pk = split[0]
-            store[pk]["_id"] = pk
+        concepts[cui]["_id"] = cui
 
-            if split[2] == "P":
-                store[pk]["preferred"] = split[3]
+        if split[2] == "P":
+            concepts[cui]["preferred"] = lui
 
-            try:
-                store[pk]["term"].add(split[3])
-            except KeyError:
-                store[pk]["term"] = {split[3]}
+        concepts[cui]["lui"].append(lui)
+        concepts[cui]["sui"].append(sui)
 
-            try:
-                store[pk]["string"].add(split[5])
-            except KeyError:
-                store[pk]["string"] = {split[5]}
+    if process_definitions:
+        concepts = process_mrdef(path, concepts, languages, preprocessor)
+    if process_relations:
+        concepts = process_mrrel(path, concepts)
+    if process_semantic_types:
+        concepts = process_mrsty(path, concepts)
 
-        newtime = time.time()
+    return dict(concepts)
 
-        # Convert the items with sets to lists because of BSON.
-        for key, item in store.items():
-            store[key]["term"] = list(item["term"])
-            store[key]["string"] = list(item["string"])
-            store[key]["rel"] = {}
+def _create_terms(path, languages):
 
-        logging.info("Conversion to BSON types took {0:.2f} seconds".format(time.time() - newtime))
+    terms = defaultdict(mytype)
 
-        if definitions:
-            store = self._mrdef(store)
-        if relations:
-            store = self._mrrel(store)
+    mrcsonsopath = os.path.join(path, "MRCONSO.RRF")
 
-        newtime = time.time()
-        store = {k: v for k, v in store.items() if "string" in v}
-        logging.info("Converting store took {0:.2f} seconds".format(time.time() - newtime))
+    for idx, _ in enumerate(open(mrcsonsopath)):
+        pass
 
-        newtime = time.time()
+    num_lines = idx
 
-        collection.insert_many(store.values())
-        logging.info("Inserting {0} items into {1} took {2:.2f} seconds".format(len(store),
-                     collection.name,
-                     time.time() - newtime))
+    print("Reading MRCONSO for terms.")
+    for record in tqdm(open(mrcsonsopath), total=num_lines):
 
-    def _create_strings(self, overwrite):
-        """
-        Creates the string table by reading MRCONSO.RRF.
+        split = record.strip().split("|")
 
-        Note that this throws away all words whose STR is over 1000 bytes long because of BSON constraints. For the
-        2015 version of UMLS, this entails that we throw away 567 long strings, but these are all noisy.
+        if languages and split[1] not in languages:
+            continue
 
-        :param overwrite: whether to overwrite
-        :return: the table.
-        """
-        collection = self.db.string
+        cui = split[0]
+        sui = split[5]
+        lui = split[3]
 
-        if collection.count() > 0 and not overwrite:
-            logging.info("Skipped {0}".format(collection.name))
-            return
+        terms[lui]["_id"] = lui
+        terms[lui]["cui"].append(cui)
+        terms[lui]["sui"].append(sui)
 
-        store = defaultdict(dict)
+    return terms
 
-        start = time.time()
 
-        for idx, record in enumerate(io.open(os.path.join(self.path, "MRCONSO.RRF"), encoding='utf-8')):
+def _create_strings(path, languages):
 
-            if idx % 100000 == 0:
-                logging.info("{0} strings in {1} seconds".format(idx, time.time() - start))
+    strings = defaultdict(mytype)
 
-            split = record.strip().split("|")
+    mrcsonsopath = os.path.join(path, "MRCONSO.RRF")
 
-            if split[1] not in self.languages:
-                continue
+    for idx, _ in enumerate(open(mrcsonsopath)):
+        pass
 
-            pk = split[5]
-            string = split[14]
+    num_lines = idx
 
-            # Check BSON length
-            if len(split[14].encode("utf-8")) >= 1000:
-                logging.info(split[14])
-                self.forbidden.add(pk)
-                continue
+    print("Reading MRCONSO for strings.")
+    for record in tqdm(open(mrcsonsopath), total=num_lines):
 
-            # Create lexical representation.
-            lowerwords = " ".join(self.punct.sub(" ", string).lower().split())
+        split = record.strip().split("|")
+        string = split[14]
 
-            store[pk]["_id"] = pk
-            store[pk]["string"] = string
-            store[pk]["lower"] = lowerwords
-            store[pk]["lang"] = split[1]
-            store[pk]["numwords"] = len(string.split())
-            store[pk]["numwordslower"] = len(lowerwords.split())
-            store[pk]["term"] = split[3]
+        # Check BSON length
+        byte_string = string.encode("utf-8")
+        if len(byte_string) >= 1000:
+            # Truncate 1000 bytes
+            string = byte_string[:1000].decode('utf-8')
 
-            try:
-                store[pk]["concept"].add(split[0])
-            except KeyError:
-                store[pk]["concept"] = {split[0]}
+        if languages and split[1] not in languages:
+            continue
 
-        newtime = time.time()
+        cui = split[0]
+        sui = split[5]
+        lui = split[3]
 
-        # Convert the items with sets to lists because of BSON.
-        for key, item in store.items():
-            store[key]["concept"] = list(item["concept"])
+        # Create lexical representation.
+        lowerwords = " ".join(PUNCT.sub(" ", string).lower().split())
 
-        logging.info("Conversion to BSON types took {0:.2f} seconds".format(time.time() - newtime))
+        strings[sui]["_id"] = sui
+        strings[sui]["string"] = string
+        strings[sui]["lower"] = lowerwords
+        strings[sui]["lang"] = split[1]
+        strings[sui]["numwords"] = len(string.split())
+        strings[sui]["numwordslower"] = len(lowerwords.split())
+        strings[sui]["lui"] = lui
+        strings[sui]["cui"].append(cui)
 
-        newtime = time.time()
+    return strings
 
-        collection.insert_many(store.values())
-        logging.info("Inserting {0} items into {1} took {2:.2f} seconds".format(len(store),
-                     collection.name,
-                     time.time() - newtime))
 
-        logging.info("Threw away {0} items".format(len(self.forbidden)))
+def process_mrrel(path, concepts):
+    """
+    Reads the relations from MRREL.RRF, and appends them to the corresponding items in the store.
+    Because bidirectional relations in UMLS occur for both directions, only the direction which occurs in the
+    UMLS is added.
 
-        return store
+    :param store: The store to which to add.
+    :return: the updated store.
+    """
+    mrrelpath = os.path.join(path, "MRREL.RRF")
 
-    def _create_terms(self, overwrite):
-        """
-        Creates the Term collection from the MRCONSO.RRF file.
+    for idx, _ in enumerate(open(mrrelpath)):
+        pass
 
-        :param overwrite: whether to overwrite the current collection.
-        :return: None
-        """
+    num_lines = idx
 
-        collection = self.db.term
+    for record in tqdm(open(mrrelpath), total=num_lines):
 
-        if collection.count() > 0 and not overwrite:
-            logging.info("Skipped {0}".format(collection.name))
-            return
+        split = record.strip().split("|")
 
-        store = defaultdict(dict)
+        source = split[4]
+        dest = split[0]
 
-        start = time.time()
+        # provide dictionary mapping for REL
+        rel = RELATIONMAPPING[split[3]]
 
-        for idx, record in enumerate(open(os.path.join(self.path, "MRCONSO.RRF"))):
+        try:
+            concepts[source]["rel"][rel].append(dest)
+        except TypeError:
+            concepts[source]["rel"] = defaultdict(list)
+            concepts[source]["rel"][rel].append(dest)
 
-            if idx % 100000 == 0:
-                logging.info("{0} terms in {1:.2f} seconds".format(idx, time.time() - start))
+    return concepts
 
-            split = record.strip().split("|")
 
-            if split[1] not in self.languages:
-                continue
+def process_mrdef(path,
+                  concepts,
+                  languages,
+                  preprocessor):
+    """
+    Reads the definitions from MRDEF.RRF and appends them to the corresponding items in the store.
 
-            if split[5] in self.forbidden:
-                continue
+    It is appended to the store, and not to the DB because this is way faster.
 
-            # Get the key from the table name.
-            pk = split[3]
+    :param store: The store to which to append.
+    :return: the updated store.
+    """
+    isolanguages = {LANGDICT[l] for l in languages}
 
-            store[pk]["_id"] = pk
+    mrdefpath = os.path.join(path, "MRDEF.RRF")
 
-            # For each non-primary key, add the item.
-            try:
-                store[pk]["concept"].add(split[0])
-            except KeyError:
-                store[pk]["concept"] = {split[0]}
+    for idx, _ in enumerate(open(mrdefpath)):
+        pass
 
-            # For each non-primary key, add the item.
-            try:
-                store[pk]["string"].add(split[5])
-            except KeyError:
-                store[pk]["string"] = {split[5]}
+    num_lines = idx
 
-        newtime = time.time()
+    for record in tqdm(open(mrdefpath), total=num_lines):
+        split = record.strip().split("|")
 
-        # Convert the items with sets to lists because of BSON.
-        for key, item in store.items():
-            store[key]["concept"] = list(item["concept"])
-            store[key]["string"] = list(item["string"])
+        pk = split[0]
 
-        logging.info("Conversion to BSON types took {0:.2f} seconds".format(time.time() - newtime))
+        definition = split[5]
 
-        newtime = time.time()
-        collection.insert_many(store.values())
-        logging.info("Inserting {0} items into {1} took {2:.2f} seconds".format(len(store),
-                     collection.name,
-                     time.time() - newtime))
+        # Detect language -> UMLS does not take into account language
+        # in MRDEF.
+        lang, _ = langid.classify(definition)
 
-        return store
+        if lang not in isolanguages:
+            continue
 
-    def _mrrel(self, store):
-        """
-        Reads the relations from MRREL.RRF, and appends them to the corresponding items in the store.
-        Because bidirectional relations in UMLS occur for both directions, only the direction which occurs in the
-        UMLS is added.
+        # Tokenize the definition.
+        if preprocessor:
+            definition = preprocessor(definition)
+        concepts[pk]["definition"].append(definition)
 
-        :param store: The store to which to add.
-        :return: the updated store.
-        """
-        start = time.time()
+    for k in {k for k, v in concepts.items() if 'definition' in v}:
+        try:
+            concepts[k]["definition"] = list(concepts[k]["definition"])
+        except KeyError:
+            continue
 
-        for idx, record in enumerate(open(os.path.join(self.path, "MRREL.RRF"))):
+    return concepts
 
-            if idx % 100000 == 0:
-                logging.info("{0} relations in {1:.2f} seconds".format(idx, time.time() - start))
+def process_mrsty(path, concepts):
 
-            split = record.strip().split("|")
+    mrstypath = os.path.join(path, "MRSTY.RRF")
 
-            source = split[4]
-            dest = split[0]
+    for idx, _ in enumerate(open(mrstypath)):
+        pass
 
-            # provide dictionary mapping for REL
-            rel = self.relationmapping[split[3]]
+    num_lines = idx
 
-            try:
-                store[source]["rel"][rel].add(dest)
-            except KeyError:
-                store[source]["rel"] = defaultdict(set)
+    for record in tqdm(open(mrstypath), total=num_lines):
+        split = record.strip().split("|")
 
-        for key in store.keys():
-            for k, v in store[key]["rel"].items():
-                store[key]["rel"][k] = list(v)
+        cui = split[0]
 
-        return store
+        semantic_type = split[2]
+        concepts[cui]["semtype"].append(semantic_type)
 
-    def _mrdef(self, store):
-        """
-        Reads the definitions from MRDEF.RRF and appends them to the corresponding items in the store.
-
-        It is appended to the store, and not to the DB because this is way faster.
-
-        :param store: The store to which to append.
-        :return: the updated store.
-        """
-        start = time.time()
-
-        for idx, record in enumerate(open(os.path.join(self.path, "MRDEF.RRF"))):
-
-            if idx % 100000 == 0 and idx > 0:
-                logging.info("{0} definitions in {1:.2f} seconds.".format(idx, time.time() - start))
-
-            split = record.strip().split("|")
-
-            pk = split[0]
-
-            definition = split[5]
-
-            # Detect language -> UMLS does not take into account language in MRDEF.
-            lang, _ = langid.classify(definition)
-
-            if lang not in self._isolanguages:
-                continue
-
-            # Tokenize the definition and remove any HTML.
-            if self._tokenizer:
-                definition = self._tokenizer(definition)
-
-            try:
-                store[pk]["definition"].add(definition)
-            except KeyError:
-                store[pk]["definition"] = {definition}
-
-        for k in store.keys():
-            try:
-                store[k]["definition"] = list(store[k]["definition"])
-            except KeyError:
-                continue
-
-        return store
+    return concepts

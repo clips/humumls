@@ -1,14 +1,22 @@
+"""Table classes, both specific for UMLS and base classes."""
+
 
 class Table(object):
-    """Base class for all Table classes."""
+    """
+    Base class for all Table classes.
+
+    Parameters
+    ----------
+    connection : Connection
+        A humumls.connection.Connection instance which is used to connect
+        to the mongoDB.
+    classname : string
+        The name of the collection which is used by this table.
+
+    """
 
     def __init__(self, connection, classname):
-        """
-
-        :param connection: a connection instance.
-        :param classname: the name of the class for which the table functions.
-        :return:
-        """
+        """Init method."""
         self.classname = classname
         self.connection = connection
         self._connection = self.connection.db.get_collection(self.classname)
@@ -17,18 +25,36 @@ class Table(object):
         """
         Syntactic sugar.
 
-        :param key: The _id of the current class.
-        :return: A single record or an empty list.
+        Parameters
+        ----------
+        key : object
+            An instance of a primary key for the given collection this
+            database queries. For UMLS, these are invariably strings.
+
+        Returns
+        -------
+        record : dict
+            A single record.
+
         """
-        return self._connection.find_one({"_id": key})
+        return self.retrieve_one({"_id": key})
 
     def retrieve(self, query, filt=()):
         """
-        Retrieves items from the connection.
+        Retrieve items from the collection.
 
-        :param query: The query to run.
-        :param filt: The filter.
-        :return: A cursor with the filter.
+        Parameters
+        ----------
+        query : dict
+            The mongoDB query to run.
+        filt : dict
+            The filter dictionary to use.
+
+        Returns
+        -------
+        cursor : MongoDB Cursor.
+            A cursor pointing towards the objects.
+
         """
         if filt:
             return self._connection.find(query, filt)
@@ -37,139 +63,177 @@ class Table(object):
 
     def retrieve_one(self, query, filt=()):
         """
-        Retrieve a single item from the connection.
+        Retrieve a single item from the collection.
 
-        :param query: The query to run.
-        :param filt: The filter.
-        :return: A single item.
+        If multiple items satisfy the query, only the first one is returned.
+
+        Parameters
+        ----------
+        query : dict
+            The mongoDB query to run.
+        filt : dict
+            The filter dictionary to use.
+
+        Returns
+        -------
+        cursor : MongoDB Cursor.
+            A cursor pointing towards the objects.
+
         """
         if filt:
             return self._connection.find_one(query, filt)
         else:
             return self._connection.find_one(query)
 
-    def bunch(self, listofids, filt=(), orq=True):
+    def bunch(self, ids, filt=(), orq=True):
         """
-        Return a bunch of items based on primary keys.
+        Return a bunch of items based on their primary keys.
 
-        :param listofids: a list of IDs to retrieve.
-        :param orq: whether to use an OR or an IN query.
-        :return: a cursor to the specified items.
+        Parameters
+        ----------
+        ids : list of objects
+            A list of IDs to retrieve.
+        filt : dict
+            The filtering query.
+        orq : bool
+            Whether to use an OR or an IN query
+
         """
+        if not ids:
+            return []
         if orq:
-            return self.retrieve({"$or": [{"_id": i} for i in listofids]}, filt)
+            return self.retrieve({"$or": [{"_id": i}
+                                  for i in ids]}, filt)
         else:
-            return self.retrieve({"_id": {"$in": listofids}}, filt)
+            return self.retrieve({"_id": {"$in": ids}}, filt)
 
 
 class String(Table):
-    """Connection to the String collection"""
+    """Connection to the String collection."""
 
     def __init__(self, connection):
-        """
-
-
-        :param connection: an instance of a Connection class.
-        :return:
-        """
-
+        """Init method."""
         super(String, self).__init__(connection, "string")
 
-    def surface(self, listofids, lower=True):
+    def surface(self, ids, lower=True):
         """
         Retrieve the surface form of a list of string ids.
 
-        :param listofids: A list of ids (SUI in UMLS terminology)
-        :param lower: whether to return the lower-cased version or the original version.
-        :return: a list of surface forms.
-        """
+        Parameters
+        ----------
+        ids : list of string
+            A list of ids (SUI in UMLS terminology)
+        lower : bool
+            Whether to return the lower-cased version or the original version.
 
+        Returns
+        -------
+        forms : list of string
+            A list of strings for the given ids.
+
+        """
         if lower:
-            return [s["lower"] for s in self.bunch(listofids)]
+            return [s["lower"] for s in self.bunch(ids)]
         else:
-            return [s["string"] for s in self.bunch(listofids)]
+            return [s["string"] for s in self.bunch(ids)]
 
     def concept_id(self, surface):
         """
-        Retrieves all concept ids associated with a given surface form.
+        Retrieve all concept ids associated with a given surface form.
 
-        :param surface: The surface form for which to retrieve all concept ids.
-        :return:
+        Parameters
+        ----------
+        surface : string
+            The string for which to retrieve the cuis.
+
+        Returns
+        -------
+        cuis : list of string
+            A list of cuiS which share the surface form.
+
         """
-
-        string = self.retrieve_one({"string": surface}, {"_id": 0, "concept": 1})
+        # Filter: don't retrieve the _id itself.
+        string = self.retrieve_one({"string": surface},
+                                   {"_id": 0, "cui": 1})
         if string:
-            return string["concept"]
+            return string["cui"]
         else:
             return []
 
 
 class Concept(Table):
-    """Connection to the Concept collection"""
+    """Connection to the Concept collection."""
 
     def __init__(self, connection):
-
+        """Init method."""
         super(Concept, self).__init__(connection, "concept")
 
     def all_definitions(self):
         """
-        Returns all definitions
+        Get all concepts with definitions.
 
-        :return: A dictionary where the key is the Concept ID and the value is a list of definitions.
+        Returns
+        -------
+        concepts : dict
+            A dictionary where the key is the Concept ID and the value is a
+            list of definitions for said concept.
+
         """
-        return {x["_id"]: x["description"] for x in self.retrieve({"$exists": "definition"}, {"definition": 1})}
+        return {x["_id"]: x["description"]
+                for x in self.retrieve({"$exists": "definition"},
+                                       {"definition": 1})}
 
-    def bunch_definitions(self, cids):
+    def bunch_definitions(self, cuis):
         """
-        Returns the definitions for a bunch of concept ids.
+        Get definitions for a bunch of concept ids.
 
-        :param cids: A list of concept ids (CUI)
-        :return: A dictionary where the key is the concept ID and the value is a list of definitions.
+        Parameters
+        ----------
+        cuis : list of strings
+            A list of concept ids (cui)
+
+        Returns
+        -------
+        concepts : dict
+            A dictionary with the as the concept ID and the value is a list of
+            definitions.
+
         """
-        return {c["_id"]: c["definition"] for c in self.bunch(cids, {"definition": 1}, orq=True)}
+        return {c["_id"]: c["definition"]
+                for c in self.bunch(cuis, {"definition": 1}, orq=True)}
 
-    def one_definition(self, cid):
+    def one_definition(self, cui):
         """
-        Return all definitions for a single concept.
+        Get all definitions for a single concept.
 
-        :param cid: A single cid.
-        :return: A list of descriptions.
+        Parameters
+        ----------
+        cui : a single concept ID
+
+        Returns
+        -------
+        descriptions : list
+            A list of descriptions.
+
         """
-        return self[cid]["description"]
+        return self[cui]["description"]
 
-    def get_preferred(self, cid):
-        """
-        Gets the preferred term associated with a single concept id.
+    def preferred(self, cui):
+        """Get the preferred term associated with a single concept id."""
+        return self[cui]["preferred"]
 
-        :param cid: a concept id.
-        :return: the TID of the preferred term.
-        """
-        return self[cid]["preferred"]
+    def synonym(self, cui):
+        """Get the cuis of the concepts which are synonyms of the given cui."""
+        return self[cui]["rel"]["synonym"]
 
-    def get_synonym(self, cid):
-        """
-        Gets the cids of the concepts which are synonyms of the given cid.
-
-        :param cid: the cid.
-        :return: A list of concept that are synonyms to the given cid.
-        """
-
-        return self[cid]["rel"]["synonym"]
-
-    def get_words(self, cid):
-        """
-        Gets all words which are associated with a concept ID.
-
-        :param cid: The concept ID
-        :return: A list of words.
-        """
-
-        return self[cid]["string"]
+    def words(self, cui):
+        """Get all words associated with a concept ID."""
+        return self[cui]["string"]
 
 
 class Term(Table):
-    """Connection to the Term collection"""
+    """Connection to the Term collection."""
 
     def __init__(self, connection):
-
+        """Init method."""
         super(Term, self).__init__(connection, "term")

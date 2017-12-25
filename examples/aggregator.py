@@ -40,13 +40,13 @@ class Aggregator(object):
         :param string: the string for which to search definitions.
         :return: a dictionary of concepts which contains the definition of that concept.
         """
-        string_obj = self.string.retrieve_one({"string": string}, {"_id": 1, "concept": 1})
+        string_obj = self.string.retrieve_one({"string": string}, {"_id": 1, "cui": 1})
         if not string_obj:
             return []
 
-        return self.concept.bunch_definitions(string_obj["concept"])
+        return self.concept.bunch_definitions(string_obj["cui"])
 
-    def definitions_terms(self, string, include_synonyms):
+    def definitions_terms(self, string, include_synonyms=()):
         """
         Get all definitions + preferred terms for a given string. Useful for creating concept representations.
         :param string: the string for which to retrieve the concepts and preferred terms.
@@ -90,4 +90,4 @@ class Aggregator(object):
 
             output[c["_id"]] = list(output[c["_id"]])
 
-return output
+        return output
