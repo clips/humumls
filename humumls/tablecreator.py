@@ -10,7 +10,7 @@ from pymongo import ASCENDING
 from tqdm import tqdm
 
 
-def mytype():
+def defaultdict_list():
     """Type for the store dict."""
     return defaultdict(list)
 
@@ -162,7 +162,7 @@ def _create_concepts(path,
         Dictionary of concept data, to be added to the database.
 
     """
-    concepts = defaultdict(mytype)
+    concepts = defaultdict(defaultdict_list)
 
     mrcsonsopath = os.path.join(path, "MRCONSO.RRF")
 
@@ -203,7 +203,7 @@ def _create_concepts(path,
 
 def _create_terms(path, languages):
     """Read MRCONSO for terms."""
-    terms = defaultdict(mytype)
+    terms = defaultdict(defaultdict_list)
 
     mrcsonsopath = os.path.join(path, "MRCONSO.RRF")
 
@@ -233,7 +233,7 @@ def _create_terms(path, languages):
 
 def _create_strings(path, languages):
     """Read MRCONSO for strings."""
-    strings = defaultdict(mytype)
+    strings = defaultdict(defaultdict_list)
 
     mrcsonsopath = os.path.join(path, "MRCONSO.RRF")
 
