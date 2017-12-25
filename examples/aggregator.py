@@ -1,3 +1,4 @@
+"""Example of aggregate queries."""
 from collections import defaultdict
 from itertools import chain
 
