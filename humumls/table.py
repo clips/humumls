@@ -137,9 +137,9 @@ class String(Table):
         else:
             return [s["string"] for s in self.bunch(ids)]
 
-    def concept_id(self, surface):
+    def cui(self, surface):
         """
-        Retrieve all concept ids associated with a given surface form.
+        Retrieve all cuis associated with a given surface form.
 
         Parameters
         ----------
@@ -229,6 +229,10 @@ class Concept(Table):
     def words(self, cui):
         """Get all words associated with a concept ID."""
         return self[cui]["string"]
+
+    def children(self, cui):
+        """Get all cuis of concepts which are children of this concept."""
+        return self[cui]["rel"]["child"]
 
 
 class Term(Table):
