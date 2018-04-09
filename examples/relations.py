@@ -26,7 +26,7 @@ class Relations(object):
         return list(chain.from_iterable(children_strings))
 
     def get_all_children(self, cui):
-        """Recursively get all children."""
+        """Recursively get all children of a cui."""
         cuis = [cui]
         for x in self.concept.retrieve_one(cui)['rel']['child']:
             cuis.extend(self.get_all_children(x))
