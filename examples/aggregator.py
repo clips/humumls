@@ -34,7 +34,7 @@ class Aggregator(object):
             A list of concepts, represented as dictionaries.
 
         """
-        concepts = self.string.concept_id(string)
+        concepts = self.string.cui(string)
         if not concepts:
             return []
 
@@ -85,10 +85,10 @@ class Aggregator(object):
             concept.
 
         """
-        cids = self.string.concept_id(string)
-        if not cids:
+        cuis = self.string.cui(string)
+        if not cuis:
             return []
-        return self.definitions_terms_cid(cids, relations)
+        return self.definitions_terms_cui(cuis, relations)
 
     def definitions_terms_cui(self,
                               cuis,
