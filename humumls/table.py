@@ -72,7 +72,10 @@ class Table(object):
         query : dict
             The mongoDB query to run.
         filt : dict
-            The filter dictionary to use.
+            The filtering dictionary. Filter queries use standard pymongo
+            syntax, and consist of dictionaries mapping fields to binary
+            values, indicating whether this value should or shouldn't be
+            retrieved.
 
         Returns
         -------
@@ -94,9 +97,19 @@ class Table(object):
         ids : list of objects
             A list of IDs to retrieve.
         filt : dict
-            The filtering query.
+            The filtering dictionary. Filter queries use standard pymongo
+            syntax, and consist of dictionaries mapping fields to binary
+            values, indicating whether this value should or shouldn't be
+            retrieved.
         orq : bool
-            Whether to use an OR or an IN query
+            Whether to use an OR or an IN query. This is mainly a speed
+            difference. Or queries tend to be a bit faster, but this is not
+            always the case.
+
+        Returns
+        -------
+        items : list
+            A list of items
 
         """
         if not ids:

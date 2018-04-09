@@ -22,6 +22,13 @@ class Connection(object):
     port : int
         The port to connect to.
 
+    Attributes
+    ----------
+    client : MongoClient
+        The initialized mongoclient.
+    db : MongoDB.DB
+        The specific database queried by this connection.
+
     """
 
     def __init__(self, dbname="umls", hostname="localhost", port=27017):
