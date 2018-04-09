@@ -109,11 +109,7 @@ def createdb(pathtometadir,
         raise KeyError("Not all languages you passed are valid.")
     # First create necessary paths, to fail early.
     terms = _create_terms(pathtometadir, languages)
-    '''db.term.insert_many(terms.values())
-    del(terms)'''
     strings = _create_strings(pathtometadir, languages)
-    '''db.string.insert_many(strings.values())
-    del(strings)'''
 
     concepts = _create_concepts(pathtometadir,
                                 process_definitions,
@@ -121,8 +117,6 @@ def createdb(pathtometadir,
                                 process_semantic_types,
                                 languages,
                                 preprocessor)
-    '''db.concept.insert_many(concepts.values())
-    del(concepts)'''
 
     # Create extra index.
     db.string.create_index([("string", ASCENDING),
