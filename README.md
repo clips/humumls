@@ -20,23 +20,20 @@ on which port and hostname it is running.
 The `tablecreator.py` file contains the code for creating the `MongoDB`.
 
 ```python
-from tablecreator import TableCreator
+from humumls import createdb
 
 # Get all English and Dutch items.
 languages = ["ENG", "DUT"]
 
 # Use default port, host and name.
-t = TableCreator(languages, "path/to/meta")
-
 # Create the tables. This takes ~2 hours on a normal laptop.
-t.process(verbose=True)
+createdb(languages, "path/to/meta")
 ```
 
 This `MongoDB` can be addressed using `pymongo`, or the provided `aggregate` class. The aggregate class is meant to be expanded for your specific purposes. Currently, it contains examples of use.
 
 ```python
-
-from aggregator import Aggregator
+from examples.aggregator import Aggregator
 
 # You can define your own aggregate queries.
 agg = Aggregator()
