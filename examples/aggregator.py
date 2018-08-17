@@ -3,15 +3,15 @@ from collections import defaultdict
 from itertools import chain
 
 from humumls.connection import Connection
-from humumls.table import String, Term, Concept
+from humumls import String, Term, Concept
 
 
 class Aggregator(object):
     """Example class of Aggregate queries using different UMLS tables."""
 
-    def __init__(self, dbname="umls", hostname="localhost", port=27017):
+    def __init__(self, name="umls", hostname="localhost", port=27017):
         """Init method."""
-        self._connection = Connection(dbname, hostname, port)
+        self._connection = Connection(name, hostname, port)
 
         self.string = String(self._connection)
         self.term = Term(self._connection)
@@ -96,17 +96,14 @@ class Aggregator(object):
                               include_term=True):
         """Get the definitions and terms for concepts given their CUIs."""
         filt = {"_id": 1, "definition": 1, "preferred": 1, "rel": 1}
-        concepts = self.concept.bunch(cuis, filt=filt)
+        concepts = self.concept.retrieve({"definition": {"$exists": True}},
+                                         filt)
 
         output = defaultdict(set)
 
         # Can be faster.
         for c in concepts:
-            try:
-                output[c["_id"]].update(c["definition"])
-            except KeyError:
-                pass
-
+            output[c["_id"]].update(c["definition"])
             if include_synonyms:
 
                 for syn in include_synonyms:
@@ -119,8 +116,9 @@ class Aggregator(object):
                         pass
 
             if include_term:
+
                 term = self.term[c["preferred"]]
-                output[c["_id"]].update(self.string.surface(term["string"]))
+                output[c["_id"]].update(self.string.surface(term["sui"]))
 
             output[c["_id"]] = list(output[c["_id"]])
 

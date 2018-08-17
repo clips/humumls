@@ -61,7 +61,7 @@ class Table(object):
         else:
             return self._connection.find(query)
 
-    def retrieve_one(self, query, filt=()):
+    def retrieve_one(self, query=(), filt=()):
         """
         Retrieve a single item from the collection.
 
@@ -83,6 +83,8 @@ class Table(object):
             A cursor pointing towards the objects.
 
         """
+        if not query:
+            return self._connection.find_one({}, filt)
         if filt:
             return self._connection.find_one(query, filt)
         else:
@@ -113,7 +115,7 @@ class Table(object):
 
         """
         if not ids:
-            return []
+            return self.retrieve({}, filt)
         if orq:
             return self.retrieve({"$or": [{"_id": i}
                                   for i in ids]}, filt)
@@ -193,7 +195,7 @@ class Concept(Table):
 
         """
         return {x["_id"]: x["description"]
-                for x in self.retrieve({"$exists": "definition"},
+                for x in self.retrieve({"definition": {"$exists": True}},
                                        {"definition": 1})}
 
     def bunch_definitions(self, cuis):
@@ -241,7 +243,7 @@ class Concept(Table):
 
     def words(self, cui):
         """Get all words associated with a concept ID."""
-        return self[cui]["string"]
+        return self[cui]["sui"]
 
     def children(self, cui):
         """Get all cuis of concepts which are children of this concept."""

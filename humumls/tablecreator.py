@@ -6,13 +6,8 @@ import re
 
 from pymongo import MongoClient
 from collections import defaultdict
-from pymongo import ASCENDING
+from pymongo.errors import CollectionInvalid
 from tqdm import tqdm
-
-
-def defaultdict_list():
-    """Type for the dicts."""
-    return defaultdict(list)
 
 
 PUNCT = re.compile("\W")
@@ -65,7 +60,8 @@ def createdb(pathtometadir,
              process_definitions=True,
              process_relations=True,
              process_semantic_types=True,
-             preprocessor=lambda x: x):
+             preprocessor=lambda x: x,
+             overwrite=False):
     """
     Create a MongoDB instance from the RRF format in which UMLS is distributed.
 
@@ -104,26 +100,65 @@ def createdb(pathtometadir,
 
     # Transform non-standard language codings to ISO.
     try:
-        {LANGDICT[l] for l in languages}
+        {LANGDICT[l.upper()] for l in languages}
     except KeyError:
         raise KeyError("Not all languages you passed are valid.")
     # First create necessary paths, to fail early.
-    terms = _create_terms(pathtometadir, languages)
-    strings = _create_strings(pathtometadir, languages)
+    try:
+        collection = db.create_collection("term")
+        terms = _create_terms(pathtometadir, languages)
+        collection.insert_many(terms)
+        del(terms)
+    except CollectionInvalid:
+        if overwrite:
+            db.drop_collection("term")
+            collection = db.create_collection("term")
+            terms = _create_terms(pathtometadir, languages)
+            collection.insert_many(terms)
+            del(terms)
+        else:
+            print("term already exists, not overwriting.")
 
-    concepts = _create_concepts(pathtometadir,
-                                process_definitions,
-                                process_relations,
-                                process_semantic_types,
-                                languages,
-                                preprocessor)
+    try:
+        collection = db.create_collection("string")
+        strings = _create_strings(pathtometadir, languages)
+        collection.insert_many(strings)
+        del(strings)
+    except CollectionInvalid:
+        if overwrite:
+            db.drop_collection("string")
+            collection = db.create_collection("string")
+            strings = _create_strings(pathtometadir, languages)
+            collection.insert_many(strings)
+            del(strings)
+        else:
+            print("string already exists, not overwriting.")
 
-    # Create extra index.
-    db.string.create_index([("string", ASCENDING),
-                            ("lower", ASCENDING),
-                            ("lang", ASCENDING)], unique=True)
+    try:
+        collection = db.create_collection("concept")
+        concepts = _create_concepts(pathtometadir,
+                                    process_definitions,
+                                    process_relations,
+                                    process_semantic_types,
+                                    languages,
+                                    preprocessor)
+        collection.insert_many(concepts)
+        del(concepts)
+    except CollectionInvalid:
+        if overwrite:
+            collection = db.create_collection("concept")
+            concepts = _create_concepts(pathtometadir,
+                                        process_definitions,
+                                        process_relations,
+                                        process_semantic_types,
+                                        languages,
+                                        preprocessor)
+            collection.insert_many(concepts)
+            del(concepts)
+        else:
+            print("concept already exists, not overwriting.")
 
-    return concepts, strings, terms
+    return db
 
 
 def _create_concepts(path,
@@ -156,7 +191,7 @@ def _create_concepts(path,
         Dictionary of concept data, to be added to the database.
 
     """
-    concepts = defaultdict(defaultdict_list)
+    concepts = defaultdict(dict)
 
     mrcsonsopath = os.path.join(path, "MRCONSO.RRF")
 
@@ -164,10 +199,8 @@ def _create_concepts(path,
         pass
 
     num_lines = idx
-
     print("Reading MRCONSO for concepts.")
     for record in tqdm(open(mrcsonsopath), total=num_lines):
-
         split = record.strip().split("|")
 
         if languages and split[1] not in languages:
@@ -177,13 +210,21 @@ def _create_concepts(path,
         sui = split[5]
         lui = split[3]
 
-        concepts[cui]["_id"] = cui
+        c = concepts[cui]
+
+        c["_id"] = cui
 
         if split[2] == "P":
-            concepts[cui]["preferred"] = lui
+            c["preferred"] = lui
 
-        concepts[cui]["lui"].append(lui)
-        concepts[cui]["sui"].append(sui)
+        try:
+            c["lui"].add(lui)
+        except KeyError:
+            c["lui"] = set([lui])
+        try:
+            c["sui"].add(sui)
+        except KeyError:
+            c["sui"] = set([sui])
 
     if process_definitions:
         concepts = process_mrdef(path, concepts, languages, preprocessor)
@@ -192,12 +233,22 @@ def _create_concepts(path,
     if process_semantic_types:
         concepts = process_mrsty(path, concepts)
 
-    return dict(concepts)
+    for v in concepts.values():
+        try:
+            v['lui'] = list(v['lui'])
+        except KeyError:
+            pass
+        try:
+            v['sui'] = list(v['sui'])
+        except KeyError:
+            pass
+
+    return list(concepts.values())
 
 
 def _create_terms(path, languages):
     """Read MRCONSO for terms."""
-    terms = defaultdict(defaultdict_list)
+    terms = defaultdict(dict)
 
     mrcsonsopath = os.path.join(path, "MRCONSO.RRF")
 
@@ -218,16 +269,28 @@ def _create_terms(path, languages):
         sui = split[5]
         lui = split[3]
 
-        terms[lui]["_id"] = lui
-        terms[lui]["cui"].append(cui)
-        terms[lui]["sui"].append(sui)
+        t = terms[lui]
 
-    return terms
+        t["_id"] = lui
+        try:
+            t["cui"].append(cui)
+        except KeyError:
+            t["cui"] = [cui]
+        try:
+            t["sui"].append(sui)
+        except KeyError:
+            t["sui"] = [sui]
+
+    for v in terms.values():
+        t["sui"] = list(t["sui"])
+        t["cui"] = list(t["cui"])
+
+    return list(terms.values())
 
 
 def _create_strings(path, languages):
     """Read MRCONSO for strings."""
-    strings = defaultdict(defaultdict_list)
+    strings = defaultdict(dict)
 
     mrcsonsopath = os.path.join(path, "MRCONSO.RRF")
 
@@ -258,16 +321,24 @@ def _create_strings(path, languages):
         # Create lexical representation.
         lowerwords = " ".join(PUNCT.sub(" ", string).lower().split())
 
-        strings[sui]["_id"] = sui
-        strings[sui]["string"] = string
-        strings[sui]["lower"] = lowerwords
-        strings[sui]["lang"] = split[1]
-        strings[sui]["numwords"] = len(string.split())
-        strings[sui]["numwordslower"] = len(lowerwords.split())
-        strings[sui]["lui"] = lui
-        strings[sui]["cui"].append(cui)
+        s = strings[sui]
 
-    return strings
+        s["_id"] = sui
+        s["string"] = string
+        s["lower"] = lowerwords
+        s["lang"] = split[1]
+        s["numwords"] = len(string.split())
+        s["numwordslower"] = len(lowerwords.split())
+        s["lui"] = lui
+        try:
+            s["cui"].add(cui)
+        except KeyError:
+            s["cui"] = set([cui])
+
+    for v in strings.values():
+        v['cui'] = list(v['cui'])
+
+    return list(strings.values())
 
 
 def process_mrrel(path, concepts):
@@ -289,17 +360,26 @@ def process_mrrel(path, concepts):
 
         split = record.strip().split("|")
 
-        source = split[4]
+        cui = split[4]
         dest = split[0]
 
         # provide dictionary mapping for REL
         rel = RELATIONMAPPING[split[3]]
 
+        c = concepts[cui]
+        c["rel"] = c.get("rel", {})
+
         try:
-            concepts[source]["rel"][rel].append(dest)
-        except TypeError:
-            concepts[source]["rel"] = defaultdict(list)
-            concepts[source]["rel"][rel].append(dest)
+            concepts[cui]["rel"][rel].add(dest)
+        except KeyError:
+            concepts[cui]["rel"][rel] = set([dest])
+
+    for v in concepts.values():
+        try:
+            for reltype in v["rel"]:
+                v["rel"][reltype] = list(v["rel"][reltype])
+        except KeyError:
+            pass
 
     return concepts
 
@@ -332,7 +412,8 @@ def process_mrdef(path,
         The updated concept dictionary with added definitions.
 
     """
-    isolanguages = {LANGDICT[l] for l in languages}
+    isolanguages = {LANGDICT[l.upper()] for l in languages}
+    print(isolanguages)
 
     mrdefpath = os.path.join(path, "MRDEF.RRF")
 
@@ -345,27 +426,23 @@ def process_mrdef(path,
     for record in tqdm(open(mrdefpath), total=num_lines):
         split = record.strip().split("|")
 
-        pk = split[0]
-
+        cui = split[0]
+        c = concepts[cui]
         definition = split[5]
 
         # Detect language -> UMLS does not take into account language
         # in MRDEF.
         lang, _ = langid.classify(definition)
-
         if lang not in isolanguages:
             continue
 
         # Tokenize the definition.
         if preprocessor:
             definition = preprocessor(definition)
-        concepts[pk]["definition"].append(definition)
-
-    for k in {k for k, v in concepts.items() if 'definition' in v}:
         try:
-            concepts[k]["definition"] = list(concepts[k]["definition"])
+            c["definition"].append(definition)
         except KeyError:
-            continue
+            c["definition"] = [definition]
 
     return concepts
 
@@ -384,8 +461,13 @@ def process_mrsty(path, concepts):
         split = record.strip().split("|")
 
         cui = split[0]
-
+        if cui not in concepts:
+            continue
+        c = concepts[cui]
         semantic_type = split[2]
-        concepts[cui]["semtype"].append(semantic_type)
+        try:
+            c = c["semtype"].append(semantic_type)
+        except KeyError:
+            c["semtype"] = [semantic_type]
 
     return concepts
