@@ -3,6 +3,16 @@ UMLS in Python with MongoDB.
 
 This package allows for the conversion of UMLS .RRF files to a document-level MongoDB database. Note that the goal of this package is not to provide a 1-to-1 mapping from the UMLS .RRF mapping to a MongoDB, but rather to provide useful abstractions where necessary.
 
+## Requirements
+
+```
+langid
+pymongo
+tqdm
+```
+
+See `requirements.txt` for specific package information
+
 ## Important changes
 
 * The Atom Unique Identifier (AUI) has been removed, as this is no longer necessary when using document-level databases.
