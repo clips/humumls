@@ -2,7 +2,7 @@
 from itertools import chain
 
 from humumls.connection import Connection
-from humumls.table import String, Term, Concept
+from humumls import String, Term, Concept
 
 
 class Relations(object):
