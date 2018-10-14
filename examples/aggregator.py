@@ -91,7 +91,6 @@ class Aggregator(object):
         return self.definitions_terms_cui(cuis, relations)
 
     def definitions_terms_cui(self,
-                              cuis,
                               include_synonyms=(),
                               include_term=True):
         """Get the definitions and terms for concepts given their CUIs."""
