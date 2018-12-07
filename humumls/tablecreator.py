@@ -319,16 +319,17 @@ def _create_strings(path, languages):
         lui = split[3]
 
         # Create lexical representation.
-        lowerwords = " ".join(PUNCT.sub(" ", string).lower().split())
+        tokenized = " ".join(PUNCT.sub(" ", string).split())
 
         s = strings[sui]
 
         s["_id"] = sui
         s["string"] = string
-        s["lower"] = lowerwords
+        s["lower"] = string.lower()
+        s["tokenized"] = tokenized
         s["lang"] = split[1]
         s["numwords"] = len(string.split())
-        s["numwordslower"] = len(lowerwords.split())
+        s["numwordslower"] = len(tokenized.split())
         s["lui"] = lui
         try:
             s["cui"].add(cui)
